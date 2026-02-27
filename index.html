@@ -133,12 +133,34 @@
         <main class="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
             <!-- 左侧：1000 个体的网格视图 -->
             <div class="glass-panel rounded-2xl p-4 flex-1 flex flex-col min-h-0">
-                <div class="flex justify-between items-center mb-3 shrink-0">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 shrink-0 gap-3">
                     <h2 class="text-sm font-medium text-slate-300 flex items-center gap-2">
                         <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                         全国医生阵列 (10,000 名)
                     </h2>
-                    <span class="text-xs text-slate-500">青绿发光代表业界泰斗，暗红代表遭遇严重医疗事故或声望扫地</span>
+                    
+                    <!-- 新增的 Legend Bar -->
+                    <div class="flex items-center text-[10px] text-slate-400 bg-black/20 px-3 py-1.5 rounded-full border border-white/5">
+                        <span class="mr-2">业界地位：</span>
+                        <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-1">
+                                <span class="w-2.5 h-2.5 rounded-sm" style="background-color: hsl(350, 80%, 25%); box-shadow: 0 0 4px hsl(350, 80%, 25%);"></span>
+                                <span>声望扫地</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="w-2.5 h-2.5 rounded-sm" style="background-color: #334155;"></span>
+                                <span>默默无闻</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="w-2.5 h-2.5 rounded-sm" style="background-color: hsl(175, 75%, 45%);"></span>
+                                <span>小有名气</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="w-2.5 h-2.5 rounded-sm" style="background-color: hsl(150, 90%, 75%); box-shadow: 0 0 6px hsl(150, 90%, 75%);"></span>
+                                <span class="text-teal-200">业界泰斗</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="canvas-container flex-1 bg-black/20 rounded-xl overflow-hidden shadow-inner relative">
                     <canvas id="gridCanvas"></canvas>
@@ -714,6 +736,14 @@
                     ctx.fillStyle = `hsl(${200 - pct * 40}, ${30 + pct*50}%, ${40 + pct*30}%)`;
 
                     ctx.fillRect(x, y, w > 0 ? w : 1, visualH);
+
+                    // 新增：在每个条上方标注具体的数值
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+                    ctx.font = '8px Inter, monospace';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    // 使用 formatNumber 压缩大数字（如 1200 -> 1.2K）以防止文本重叠
+                    ctx.fillText(this.formatNumber(count), x + (w > 0 ? w : 1) / 2, y - 2);
                 }
             }
         }
