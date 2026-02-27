@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>医疗名望的随机性实验 | 疾病与概率衍生模型</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; 
+            color: #f8fafc;
+        }
+
+        /* 液态流体动画背景 - 调整为医疗相关的冷色调 */
+        @keyframes blob {
+            0% { transform: translate(0px, 0px) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+            100% { transform: translate(0px, 0px) scale(1); }
+        }
+        .animate-blob {
+            animation: blob 8s infinite ease-in-out;
+        }
+        .animation-delay-2000 { animation-delay: 2s; }
+        .animation-delay-4000 { animation-delay: 4s; }
+
+        /* 核心玻璃拟物态 (Glassmorphism) 样式 */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+        }
+
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 0 20px rgba(45, 212, 191, 0.3); 
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        .glass-btn:active:not(:disabled) {
+            transform: translateY(0px);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .glass-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 0.5rem;
+        }
+    </style>
+</head>
+<body class="relative min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
+
+    <!-- 动态流体背景层 -->
+    <div class="fixed inset-0 w-full h-full overflow-hidden z-0 pointer-events-none">
+        <div class="absolute top-[10%] left-[20%] w-96 h-96 bg-teal-600 rounded-full mix-blend-screen filter blur-[120px] opacity-30 animate-blob"></div>
+        <div class="absolute top-[20%] right-[20%] w-96 h-96 bg-cyan-700 rounded-full mix-blend-screen filter blur-[120px] opacity-30 animate-blob animation-delay-2000"></div>
+        <div class="absolute bottom-[10%] left-[40%] w-[30rem] h-[30rem] bg-blue-800 rounded-full mix-blend-screen filter blur-[120px] opacity-30 animate-blob animation-delay-4000"></div>
+    </div>
+
+    <!-- UI 主体 -->
+    <div class="relative z-10 w-full max-w-[1400px] flex flex-col gap-6 mb-12" style="min-height: calc(100vh - 4rem);">
+        
+        <!-- 顶部控制面板 -->
+        <header class="glass-panel rounded-2xl p-5 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
+            <div class="flex-1">
+                <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-teal-300 via-cyan-300 to-blue-300 tracking-tight">
+                    名医的诞生：医界名望的随机性实验 
+                    <span class="text-sm font-medium text-slate-400 ml-3 tracking-normal border border-slate-600/50 bg-slate-800/30 px-2 py-1 rounded-md">
+                        疾病分布模型 (10,000 医生)
+                    </span>
+                </h1>
+                <p class="text-xs text-slate-400 mt-2 flex items-center gap-2">
+                    <span class="inline-block w-2 h-2 rounded-full bg-slate-400"></span> 初始声望 10
+                    <span class="inline-block w-2 h-2 rounded-full bg-teal-400 ml-2"></span> 治愈重症(奇迹)：声望 × 2.5
+                    <span class="inline-block w-2 h-2 rounded-full bg-rose-400 ml-2"></span> 轻症失误(事故)：声望 × 0.4
+                </p>
+            </div>
+            
+            <div class="flex items-center gap-6">
+                <div class="flex gap-4 mr-2 items-center">
+                    <div class="flex flex-col items-end border-r border-white/10 pr-4">
+                        <label for="input-years" class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">执业年数</label>
+                        <input type="number" id="input-years" value="40" min="10" max="100" step="5" class="w-20 bg-black/30 border border-white/10 rounded-md px-2 py-1 text-sm text-teal-300 font-mono text-center focus:outline-none focus:border-teal-500 transition-colors">
+                    </div>
+                    <div class="flex flex-col items-end">
+                        <span class="text-[10px] text-slate-400 uppercase tracking-wider">时间流逝 (年)</span>
+                        <span class="font-mono text-xl font-semibold text-teal-300" id="stat-time">0.0 / 40</span>
+                    </div>
+                </div>
+                
+                <div class="flex gap-3">
+                    <button id="btn-start" class="glass-btn px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-teal-300">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        开始推演
+                    </button>
+                    <button id="btn-pause" class="glass-btn px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-amber-300" disabled>
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                        暂停
+                    </button>
+                    <button id="btn-reset" class="glass-btn px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 text-rose-300">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                        重置沙盘
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
+            <!-- 左侧：1000 个体的网格视图 -->
+            <div class="glass-panel rounded-2xl p-4 flex-1 flex flex-col min-h-0">
+                <div class="flex justify-between items-center mb-3 shrink-0">
+                    <h2 class="text-sm font-medium text-slate-300 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        全国医生阵列 (10,000 名)
+                    </h2>
+                    <span class="text-xs text-slate-500">青绿发光代表业界泰斗，暗红代表遭遇严重医疗事故或声望扫地</span>
+                </div>
+                <div class="canvas-container flex-1 bg-black/20 rounded-xl overflow-hidden shadow-inner relative">
+                    <canvas id="gridCanvas"></canvas>
+                </div>
+            </div>
+
+            <!-- 右侧：宏观结论与数据 -->
+            <div class="glass-panel rounded-2xl p-4 w-full lg:w-[420px] flex flex-col shrink-0">
+                <div class="mb-3 shrink-0">
+                    <h2 class="text-sm font-medium text-slate-300 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        行业地位 (声望) 宏观分布
+                    </h2>
+                </div>
+
+                <!-- 柱状图 -->
+                <div class="h-44 bg-black/20 rounded-xl overflow-hidden shadow-inner relative shrink-0 mb-4 border border-white/5">
+                    <canvas id="chartCanvas"></canvas>
+                    <div class="absolute top-2 right-4 text-[9px] text-teal-500/60 tracking-wider">声望规模 (Top 5% 截断) →</div>
+                    <div class="absolute top-2 left-10 text-[9px] text-slate-400 tracking-wider">↑ 人数</div>
+                </div>
+                
+                <!-- 实验结论追踪面板 -->
+                <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 border-b border-white/10 pb-2">医疗界生态追踪</h3>
+                    
+                    <div class="space-y-3">
+                        <!-- 结论 1：帕累托法则 -->
+                        <div class="bg-white/5 border border-white/5 rounded-lg p-3">
+                            <div class="text-[11px] text-slate-400 mb-1">结论 1: 医疗资源极化现象</div>
+                            <div class="flex justify-between items-end">
+                                <span class="text-sm text-slate-300">Top 20% 名医占据总声望的:</span>
+                                <span class="text-lg font-mono font-bold text-teal-300" id="val-pareto">0.0%</span>
+                            </div>
+                            <div class="w-full bg-black/30 h-1.5 mt-2 rounded-full overflow-hidden">
+                                <div id="bar-pareto" class="bg-teal-400 h-full transition-all duration-300" style="width: 20%"></div>
+                            </div>
+                        </div>
+
+                        <!-- 结论 2：最成功的人 -->
+                        <div class="bg-white/5 border border-teal-500/20 rounded-lg p-3 relative overflow-hidden shadow-[0_0_15px_rgba(20,184,166,0.1)]">
+                            <div class="absolute top-0 right-0 w-16 h-16 bg-teal-500/10 rounded-bl-full"></div>
+                            <div class="text-[11px] text-teal-400 mb-2 font-medium">结论 2: 医疗泰斗的履历</div>
+                            
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                    <span class="text-slate-500 block">当前最高声望</span>
+                                    <span class="font-mono text-teal-300 text-base font-bold" id="top1-score">10.0</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-500 block">其医术 <span id="top1-talent-rank" class="text-[9px] bg-white/10 px-1 rounded">排名前XX%</span></span>
+                                    <span class="font-mono text-white" id="top1-talent">0.0</span>
+                                </div>
+                                <div class="col-span-2 pt-1 border-t border-white/5 mt-1 flex justify-between items-center">
+                                    <span class="text-slate-500">生涯高风险遭遇:</span>
+                                    <div>
+                                        <span class="text-teal-400 font-mono" id="top1-lucky">0</span> 攻克重症 / 
+                                        <span class="text-rose-400 font-mono" id="top1-unlucky">0</span> 医疗事故
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 结论 3：最高天赋的人 -->
+                        <div class="bg-white/5 border border-white/5 rounded-lg p-3">
+                            <div class="text-[11px] text-slate-400 mb-2">结论 3: 医术最高超者的境遇</div>
+                            
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                    <span class="text-slate-500 block">医术天赋 (全场第1)</span>
+                                    <span class="font-mono text-blue-300 text-base" id="maxT-talent">0.0</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-500 block">其当前声望</span>
+                                    <span class="font-mono text-white" id="maxT-score">10.0</span>
+                                </div>
+                            </div>
+                            <div class="text-[10px] text-slate-500 mt-2 italic">
+                                *结论：空有顶尖医术，若未碰上（并治愈）疑难重症的机遇，或倒霉遭遇基础手术的意外，其声望可能依然平庸。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- 实验规则说明区域 -->
+        <section class="glass-panel rounded-2xl p-6 md:p-8 shrink-0 relative overflow-hidden">
+            <div class="absolute -right-20 -bottom-20 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            <h2 class="text-xl font-bold text-slate-200 mb-6 border-b border-white/10 pb-3 flex items-center gap-3">
+                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                科学模型设定与原理
+            </h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-slate-300">
+                <!-- 1. 背景与目标 -->
+                <div class="space-y-3">
+                    <h3 class="text-teal-400 font-semibold flex items-center gap-2">
+                        <span class="bg-teal-400/20 text-teal-300 w-5 h-5 rounded flex items-center justify-center text-xs font-mono">1</span>
+                        医生与病患的博弈
+                    </h3>
+                    <p class="leading-relaxed">
+                        本沙盘基于 Pluchino 随机性模型改编。在医疗行业中，医生的<strong>“行业地位/声望”</strong>不仅取决于其<strong>“医术（天赋）”</strong>，很大程度上还受制于其职业生涯中遇到的病患类型这一<strong>随机变量（运气）</strong>。
+                    </p>
+                    <p class="leading-relaxed text-xs text-slate-400">
+                        *设定：10,000名医生，医术呈正态分布（0-100）。所有医生初始声望为 10。
+                    </p>
+                </div>
+
+                <!-- 2. 模型设计 -->
+                <div class="space-y-3">
+                    <h3 class="text-cyan-400 font-semibold flex items-center gap-2">
+                        <span class="bg-cyan-400/20 text-cyan-300 w-5 h-5 rounded flex items-center justify-center text-xs font-mono">2</span>
+                        三类病例的收益风险比
+                    </h3>
+                    <p class="leading-relaxed text-xs mb-2">每次接诊，医生面对的病例类型及治愈概率如下（治愈率与医术正相关）：</p>
+                    <ul class="space-y-2 leading-relaxed text-[13px] list-disc list-inside">
+                        <li><strong>轻症 (60%)：</strong>基础治愈率80%+。成功声望 <span class="text-teal-300">×1.05</span>。若意外失败，视为严重医疗事故，声望 <span class="text-rose-400">×0.4</span>。</li>
+                        <li><strong>中症 (30%)：</strong>基础治愈率50%+。成功声望 <span class="text-teal-300">×1.2</span>。失败声望 <span class="text-slate-400">×0.7</span>。</li>
+                        <li><strong>重症 (10%)：</strong>绝症级别，治愈极难。成功则创造医学奇迹，声望 <span class="text-teal-300 font-bold">×2.5</span>；失败是常态，声望 <span class="text-slate-400">×0.9</span>。</li>
+                    </ul>
+                </div>
+
+                <!-- 3. 结果结论 -->
+                <div class="space-y-3">
+                    <h3 class="text-blue-400 font-semibold flex items-center gap-2">
+                        <span class="bg-blue-400/20 text-blue-300 w-5 h-5 rounded flex items-center justify-center text-xs font-mono">3</span>
+                        预期推演结果
+                    </h3>
+                    <ul class="space-y-2 leading-relaxed text-[13px]">
+                        <li><strong>马太效应：</strong>医术高超者大概率处于正向期望，但只有那些碰巧遇到大量“重症”并成功治愈的极少数医生，才能跨越阶层成为“一代宗师”。</li>
+                        <li><strong>防守反击：</strong>对于医术较低的医生，接诊“轻症”像排雷，一旦触发医疗事故(失败)，声望将遭到毁灭性打击，导致长尾底部的形成。</li>
+                        <li><strong>运气乘数：</strong>最高声望者往往并非医术绝对第一的人，而是医术处于中上游，且“职业生涯极度幸运”的人。</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+    </style>
+
+    <script>
+        /**
+         * 生成正态分布 (Box-Muller transform)
+         */
+        function randomNormal(mean, stdDev) {
+            let u1 = Math.random();
+            let u2 = Math.random();
+            let z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+            return z0 * stdDev + mean;
+        }
+
+        class MedicalPrestigeSimulator {
+            constructor() {
+                // 核心参数
+                this.numPoints = 10000;
+                this.gridCols = 100;
+                this.gridRows = 100; // 100 * 100 = 10000
+                
+                this.talents = new Float32Array(this.numPoints); // 医术天赋
+                this.scores = new Float32Array(this.numPoints);  // 行业地位 (声望)
+                
+                // 记录极端事件次数用于UI展示
+                this.miracleCures = new Int32Array(this.numPoints); // 治愈重症次数
+                this.medicalAccidents = new Int32Array(this.numPoints); // 轻症失败次数
+                
+                this.stepCount = 0;
+                
+                this.isRunning = false;
+                this.animationFrameId = null;
+
+                // DOM 元素绑定
+                this.gridCanvas = document.getElementById('gridCanvas');
+                this.gridCtx = this.gridCanvas.getContext('2d', { alpha: false });
+                this.chartCanvas = document.getElementById('chartCanvas');
+                this.chartCtx = this.chartCanvas.getContext('2d');
+                
+                this.ui = {
+                    time: document.getElementById('stat-time'),
+                    inputYears: document.getElementById('input-years'),
+                    pareto: document.getElementById('val-pareto'),
+                    paretoBar: document.getElementById('bar-pareto'),
+                    
+                    top1Score: document.getElementById('top1-score'),
+                    top1Talent: document.getElementById('top1-talent'),
+                    top1TalentRank: document.getElementById('top1-talent-rank'),
+                    top1Lucky: document.getElementById('top1-lucky'),
+                    top1Unlucky: document.getElementById('top1-unlucky'),
+                    
+                    maxTTalent: document.getElementById('maxT-talent'),
+                    maxTScore: document.getElementById('maxT-score')
+                };
+
+                this.btnStart = document.getElementById('btn-start');
+                this.btnPause = document.getElementById('btn-pause');
+                this.btnReset = document.getElementById('btn-reset');
+
+                this.btnStart.addEventListener('click', () => this.start());
+                this.btnPause.addEventListener('click', () => this.pause());
+                this.btnReset.addEventListener('click', () => this.reset());
+
+                // 监听年数输入框的变化
+                this.ui.inputYears.addEventListener('change', () => {
+                    let val = parseInt(this.ui.inputYears.value);
+                    if (isNaN(val) || val < 10) val = 10;
+                    this.ui.inputYears.value = val;
+                    this.maxYears = val;
+                    this.maxSteps = this.maxYears * 100; // 每年100个运算周期(Ticks)
+                    this.updateStatsUI();
+                });
+
+                // 初始化时间轴控制
+                this.maxYears = parseInt(this.ui.inputYears.value) || 40;
+                this.maxSteps = this.maxYears * 100;
+
+                window.addEventListener('resize', () => this.resizeCanvas());
+
+                this.init();
+            }
+
+            init() {
+                // 1. 初始化每个医生的医术 (均值60，标准差15，截断于0-100)
+                // 2. 初始化声望为 10
+                for (let i = 0; i < this.numPoints; i++) {
+                    let t = randomNormal(60, 15);
+                    if (t < 0) t = 0;
+                    if (t > 100) t = 100;
+                    
+                    this.talents[i] = t;
+                    this.scores[i] = 10; 
+                    this.miracleCures[i] = 0;
+                    this.medicalAccidents[i] = 0;
+                }
+                
+                this.stepCount = 0;
+                this.updateStatsUI();
+                this.resizeCanvas();
+                this.draw();
+            }
+
+            resizeCanvas() {
+                const gridRect = this.gridCanvas.parentElement.getBoundingClientRect();
+                this.gridCanvas.width = gridRect.width;
+                this.gridCanvas.height = gridRect.height;
+
+                const chartRect = this.chartCanvas.parentElement.getBoundingClientRect();
+                this.chartCanvas.width = chartRect.width;
+                this.chartCanvas.height = chartRect.height;
+
+                if (!this.isRunning) this.draw();
+            }
+
+            start() {
+                if (this.isRunning) return;
+                if (this.stepCount >= this.maxSteps) this.init(); 
+                
+                this.isRunning = true;
+                this.btnStart.disabled = true;
+                this.btnPause.disabled = false;
+                this.loop();
+            }
+
+            pause() {
+                this.isRunning = false;
+                this.btnStart.disabled = false;
+                this.btnPause.disabled = true;
+                if (this.animationFrameId) {
+                    cancelAnimationFrame(this.animationFrameId);
+                }
+            }
+
+            reset() {
+                this.pause();
+                this.init();
+            }
+
+            // 核心逻辑：单步医疗事件推演
+            simulateStep() {
+                // 每个 Tick (约等于3.6天)，全国发生 15 起足以影响医生生涯声望的"关键病例"
+                const casesPerTick = 15; 
+                
+                for (let k = 0; k < casesPerTick; k++) {
+                    // 随机一位医生接诊
+                    let docIdx = Math.floor(Math.random() * this.numPoints);
+                    let skill = this.talents[docIdx]; 
+                    let skillRatio = skill / 100; // 0 到 1 之间
+
+                    let severityRoll = Math.random();
+
+                    if (severityRoll < 0.60) {
+                        // 60% 概率：轻症 (基础病例)
+                        // 治愈率: 医术0时80%，医术100时99%
+                        let cureProb = 0.80 + skillRatio * 0.19; 
+                        if (Math.random() < cureProb) {
+                            this.scores[docIdx] *= 1.05; // 稳扎稳打，声望微涨
+                        } else {
+                            this.scores[docIdx] *= 0.4;  // 医疗事故！声望暴跌
+                            this.medicalAccidents[docIdx]++;
+                        }
+                    } else if (severityRoll < 0.90) {
+                        // 30% 概率：中症 (疑难病例)
+                        // 治愈率: 医术0时50%，医术100时90%
+                        let cureProb = 0.50 + skillRatio * 0.40;
+                        if (Math.random() < cureProb) {
+                            this.scores[docIdx] *= 1.2;  // 治疗成功，声望提升
+                        } else {
+                            this.scores[docIdx] *= 0.7;  // 治疗失败，声望受损
+                        }
+                    } else {
+                        // 10% 概率：重症 (绝症挑战)
+                        // 治愈率: 医术0时10%，医术100时50%
+                        let cureProb = 0.10 + skillRatio * 0.40;
+                        if (Math.random() < cureProb) {
+                            this.scores[docIdx] *= 2.5;  // 创造奇迹！一战成名，声望暴涨
+                            this.miracleCures[docIdx]++;
+                        } else {
+                            this.scores[docIdx] *= 0.9;  // 失败是常态，声望微跌
+                        }
+                    }
+                }
+
+                this.stepCount++;
+            }
+
+            loop() {
+                if (!this.isRunning) return;
+                
+                // 每帧执行 10 个 Ticks，加速动画
+                for(let i=0; i<10; i++) {
+                    if (this.stepCount < this.maxSteps) {
+                        this.simulateStep();
+                    }
+                }
+                
+                this.updateStatsUI();
+                this.draw();
+
+                if (this.stepCount >= this.maxSteps) {
+                    this.pause(); 
+                    return;
+                }
+
+                this.animationFrameId = requestAnimationFrame(() => this.loop());
+            }
+
+            formatNumber(num) {
+                if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+                if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+                return Math.floor(num).toString();
+            }
+
+            // 医疗主题的指数级颜色映射
+            getColorForScore(score) {
+                // 基础声望 10 附近，显示深灰/暗沉色
+                if (score >= 9.5 && score <= 10.5) return '#334155'; 
+                
+                const level = Math.log2(score / 10);
+                
+                if (level > 0) {
+                    // 正向声望：Teal (深青) -> Emerald (绿宝石) -> 白亮
+                    let intensity = Math.min(level / 8, 1); // 翻倍8次(约2560分)达到最亮
+                    let h = 175 - (intensity * 30); // 175 到 145 色相
+                    let s = 70 + (intensity * 30);
+                    let l = 35 + (intensity * 55); // 最高亮度 90%
+                    return `hsl(${h}, ${s}%, ${l}%)`;
+                } else {
+                    // 负向声望 (医疗事故)：Rose -> 深红
+                    let intensity = Math.min(Math.abs(level) / 4, 1);
+                    let h = 350;
+                    let s = 60 + (intensity * 40);
+                    let l = 35 - (intensity * 15); // 暗下去
+                    return `hsl(${h}, ${s}%, ${l}%)`;
+                }
+            }
+
+            updateStatsUI() {
+                // 1. 更新时间进度
+                let currentYear = (this.stepCount / this.maxSteps) * this.maxYears;
+                this.ui.time.innerText = `${currentYear.toFixed(1)} / ${this.maxYears}`;
+
+                // 2. 数据统计与排序准备
+                let stats = [];
+                let totalWealth = 0;
+                let maxScoreIdx = 0;
+                let maxTalentIdx = 0;
+
+                for (let i = 0; i < this.numPoints; i++) {
+                    let s = this.scores[i];
+                    let t = this.talents[i];
+                    totalWealth += s;
+                    
+                    stats.push({ id: i, score: s, talent: t });
+
+                    if (s > this.scores[maxScoreIdx]) maxScoreIdx = i;
+                    if (t > this.talents[maxTalentIdx]) maxTalentIdx = i;
+                }
+
+                // 按声望降序排列
+                stats.sort((a, b) => b.score - a.score);
+
+                // 3. 计算帕累托分布 (Top 20% 名医占据的声望比例)
+                let top20Count = Math.floor(this.numPoints * 0.2);
+                let top20Wealth = 0;
+                for (let i = 0; i < top20Count; i++) {
+                    top20Wealth += stats[i].score;
+                }
+                let paretoRatio = totalWealth > 0 ? (top20Wealth / totalWealth) * 100 : 20;
+
+                this.ui.pareto.innerText = `${paretoRatio.toFixed(1)}%`;
+                this.ui.paretoBar.style.width = `${paretoRatio}%`;
+                
+                this.ui.pareto.className = `text-lg font-mono font-bold ${paretoRatio > 70 ? 'text-amber-400' : 'text-teal-300'}`;
+
+                // 4. 更新 "首富/医疗泰斗" (结论2)
+                let top1 = stats[0];
+                this.ui.top1Score.innerText = top1.score > 100000 ? top1.score.toExponential(2) : top1.score.toFixed(1);
+                this.ui.top1Talent.innerText = top1.talent.toFixed(1);
+                this.ui.top1Lucky.innerText = this.miracleCures[top1.id];
+                this.ui.top1Unlucky.innerText = this.medicalAccidents[top1.id];
+
+                // 计算泰斗的天赋排名百分比
+                let talentRankCount = 0;
+                for(let i=0; i<this.numPoints; i++) {
+                    if (this.talents[i] > top1.talent) talentRankCount++;
+                }
+                let talentRankPct = ((talentRankCount + 1) / this.numPoints * 100).toFixed(0);
+                this.ui.top1TalentRank.innerText = `前${talentRankPct}%`;
+                
+                if (talentRankPct > 10) {
+                    this.ui.top1TalentRank.className = "text-[9px] bg-amber-500/20 text-amber-300 px-1 rounded";
+                } else {
+                    this.ui.top1TalentRank.className = "text-[9px] bg-white/10 px-1 rounded";
+                }
+
+                // 5. 更新 "医术最高超者" (结论3)
+                this.ui.maxTTalent.innerText = this.talents[maxTalentIdx].toFixed(1);
+                this.ui.maxTScore.innerText = this.scores[maxTalentIdx] > 100000 ? this.scores[maxTalentIdx].toExponential(2) : this.scores[maxTalentIdx].toFixed(1);
+
+                // 缓存给 Chart 绘制用
+                this.sortedScores = stats.map(s => s.score);
+            }
+
+            draw() {
+                this.drawGrid();
+                this.drawChart();
+            }
+
+            drawGrid() {
+                const ctx = this.gridCtx;
+                const width = this.gridCanvas.width;
+                const height = this.gridCanvas.height;
+                
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, width, height);
+
+                const cellW = width / this.gridCols;
+                const cellH = height / this.gridRows;
+                const padding = 1; 
+
+                for (let y = 0; y < this.gridRows; y++) {
+                    for (let x = 0; x < this.gridCols; x++) {
+                        const idx = y * this.gridCols + x;
+                        if (idx >= this.numPoints) break;
+
+                        const score = this.scores[idx];
+                        ctx.fillStyle = this.getColorForScore(score);
+                        
+                        // 发光效果：声望极高的医生
+                        if (score > 100) {
+                            ctx.shadowBlur = Math.min((Math.log10(score) * 3), 15);
+                            ctx.shadowColor = ctx.fillStyle;
+                        } else {
+                            ctx.shadowBlur = 0;
+                        }
+
+                        ctx.fillRect(
+                            x * cellW + padding, 
+                            y * cellH + padding, 
+                            cellW - padding * 2, 
+                            cellH - padding * 2
+                        );
+                    }
+                }
+                ctx.shadowBlur = 0; 
+            }
+
+            drawChart() {
+                const ctx = this.chartCtx;
+                const width = this.chartCanvas.width;
+                const height = this.chartCanvas.height;
+
+                ctx.clearRect(0, 0, width, height);
+
+                if (!this.sortedScores) return;
+
+                const numBins = 40;
+                const bins = new Int32Array(numBins);
+                
+                let min = 0;
+                // 动态拉伸 X 轴：忽略极端的 Top 5% 神医，以展示普罗大众的分布形态
+                let p95Idx = Math.floor(this.numPoints * 0.05);
+                let max = Math.max(40, this.sortedScores[p95Idx]); 
+                
+                const range = max - min;
+                let maxBinCount = 0;
+
+                for (let i = 0; i < this.numPoints; i++) {
+                    let s = this.scores[i];
+                    if (s < min) s = min;
+                    if (s > max) s = max;
+                    
+                    let binIdx = Math.floor(((s - min) / range) * numBins);
+                    if (binIdx >= numBins) binIdx = numBins - 1;
+                    
+                    bins[binIdx]++;
+                    if (bins[binIdx] > maxBinCount) {
+                        maxBinCount = bins[binIdx];
+                    }
+                }
+
+                const marginLeft = 35;
+                const marginBottom = 20;
+                const marginTop = 20; 
+                const marginRight = 10;
+                const chartW = width - marginLeft - marginRight;
+                const chartH = height - marginTop - marginBottom;
+                
+                const binWidth = chartW / numBins;
+
+                // 绘制坐标轴
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(marginLeft, marginTop);
+                ctx.lineTo(marginLeft, height - marginBottom); 
+                ctx.lineTo(width - marginRight, height - marginBottom); 
+                ctx.stroke();
+
+                // 绘制 Y 轴文本
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.font = '10px Inter, monospace';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.formatNumber(maxBinCount), marginLeft - 5, marginTop);
+                ctx.fillText(this.formatNumber(Math.floor(maxBinCount / 2)), marginLeft - 5, marginTop + chartH / 2);
+                ctx.fillText('0', marginLeft - 5, marginTop + chartH);
+
+                // 绘制 X 轴文本
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText(this.formatNumber(min), marginLeft, height - marginBottom + 5);
+                ctx.fillText(this.formatNumber(min + range / 2), marginLeft + chartW / 2, height - marginBottom + 5);
+                ctx.fillText(this.formatNumber(max), marginLeft + chartW, height - marginBottom + 5);
+                
+                // 绘制柱状图
+                for (let i = 0; i < numBins; i++) {
+                    const count = bins[i];
+                    if (count === 0) continue;
+
+                    // 为了展示长尾结构，对高度进行非线性压缩
+                    const visualH = (Math.pow(count, 0.6) / Math.pow(maxBinCount, 0.6)) * chartH;
+                    
+                    const x = marginLeft + i * binWidth;
+                    const y = marginTop + chartH - visualH;
+                    const w = binWidth - 1;
+
+                    // 渐变色填充：左侧(平庸)为暗淡蓝青，右侧(高声望)为明亮青绿
+                    const pct = i / numBins;
+                    ctx.fillStyle = `hsl(${200 - pct * 40}, ${30 + pct*50}%, ${40 + pct*30}%)`;
+
+                    ctx.fillRect(x, y, w > 0 ? w : 1, visualH);
+                }
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const app = new MedicalPrestigeSimulator();
+        });
+    </script>
+</body>
+</html>
