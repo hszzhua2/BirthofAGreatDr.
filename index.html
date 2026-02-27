@@ -169,18 +169,32 @@
 
             <!-- 右侧：宏观结论与数据 -->
             <div class="glass-panel rounded-2xl p-4 w-full lg:w-[420px] flex flex-col shrink-0">
-                <div class="mb-3 shrink-0">
+                
+                <!-- 1. 柱状分布图 -->
+                <div class="mb-2 shrink-0">
                     <h2 class="text-sm font-medium text-slate-300 flex items-center gap-2">
                         <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                         行业地位 (声望) 宏观分布
                     </h2>
                 </div>
-
-                <!-- 柱状图 -->
-                <div class="h-44 bg-black/20 rounded-xl overflow-hidden shadow-inner relative shrink-0 mb-4 border border-white/5">
+                <!-- 调整高度为 h-32 以容纳新的图表 -->
+                <div class="h-32 bg-black/20 rounded-xl overflow-hidden shadow-inner relative shrink-0 mb-4 border border-white/5">
                     <canvas id="chartCanvas"></canvas>
                     <div class="absolute top-2 right-4 text-[9px] text-teal-500/60 tracking-wider">声望规模 (Top 5% 截断) →</div>
                     <div class="absolute top-2 left-10 text-[9px] text-slate-400 tracking-wider">↑ 人数</div>
+                </div>
+
+                <!-- 2. 全员排序横条图 (新增) -->
+                <div class="mb-2 shrink-0">
+                    <h2 class="text-sm font-medium text-slate-300 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                        全员声望阶梯分布 (横条排序)
+                    </h2>
+                </div>
+                <div class="h-32 bg-black/20 rounded-xl overflow-hidden shadow-inner relative shrink-0 mb-4 border border-white/5">
+                    <canvas id="rankCanvas"></canvas>
+                    <div class="absolute top-2 left-2 text-[9px] text-slate-400 tracking-wider">↓ 排名高低 (1 - 10,000名)</div>
+                    <div class="absolute bottom-2 right-4 text-[9px] text-teal-500/60 tracking-wider">对数缩放下的声望值横条 →</div>
                 </div>
                 
                 <!-- 实验结论追踪面板 -->
@@ -339,8 +353,13 @@
                 // DOM 元素绑定
                 this.gridCanvas = document.getElementById('gridCanvas');
                 this.gridCtx = this.gridCanvas.getContext('2d', { alpha: false });
+                
                 this.chartCanvas = document.getElementById('chartCanvas');
                 this.chartCtx = this.chartCanvas.getContext('2d');
+
+                // 新增 Rank (排序横条图) 画布
+                this.rankCanvas = document.getElementById('rankCanvas');
+                this.rankCtx = this.rankCanvas.getContext('2d');
                 
                 this.ui = {
                     time: document.getElementById('stat-time'),
@@ -414,6 +433,10 @@
                 this.chartCanvas.width = chartRect.width;
                 this.chartCanvas.height = chartRect.height;
 
+                const rankRect = this.rankCanvas.parentElement.getBoundingClientRect();
+                this.rankCanvas.width = rankRect.width;
+                this.rankCanvas.height = rankRect.height;
+
                 if (!this.isRunning) this.draw();
             }
 
@@ -456,7 +479,6 @@
 
                     if (severityRoll < 0.60) {
                         // 60% 概率：轻症 (基础病例)
-                        // 治愈率: 医术0时80%，医术100时99%
                         let cureProb = 0.80 + skillRatio * 0.19; 
                         if (Math.random() < cureProb) {
                             this.scores[docIdx] *= 1.05; // 稳扎稳打，声望微涨
@@ -466,7 +488,6 @@
                         }
                     } else if (severityRoll < 0.90) {
                         // 30% 概率：中症 (疑难病例)
-                        // 治愈率: 医术0时50%，医术100时90%
                         let cureProb = 0.50 + skillRatio * 0.40;
                         if (Math.random() < cureProb) {
                             this.scores[docIdx] *= 1.2;  // 治疗成功，声望提升
@@ -475,7 +496,6 @@
                         }
                     } else {
                         // 10% 概率：重症 (绝症挑战)
-                        // 治愈率: 医术0时10%，医术100时50%
                         let cureProb = 0.10 + skillRatio * 0.40;
                         if (Math.random() < cureProb) {
                             this.scores[docIdx] *= 2.5;  // 创造奇迹！一战成名，声望暴涨
@@ -513,6 +533,7 @@
             formatNumber(num) {
                 if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
                 if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+                if (num < 1) return num.toFixed(2);
                 return Math.floor(num).toString();
             }
 
@@ -610,6 +631,7 @@
             draw() {
                 this.drawGrid();
                 this.drawChart();
+                this.drawRankChart(); // 新增调用横条图绘制
             }
 
             drawGrid() {
@@ -737,14 +759,66 @@
 
                     ctx.fillRect(x, y, w > 0 ? w : 1, visualH);
 
-                    // 新增：在每个条上方标注具体的数值
+                    // 在每个条上方标注具体的数值
                     ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
                     ctx.font = '8px Inter, monospace';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'bottom';
-                    // 使用 formatNumber 压缩大数字（如 1200 -> 1.2K）以防止文本重叠
                     ctx.fillText(this.formatNumber(count), x + (w > 0 ? w : 1) / 2, y - 2);
                 }
+            }
+
+            // 新增：绘制一万人排名的阶梯状横条图
+            drawRankChart() {
+                const ctx = this.rankCtx;
+                const width = this.rankCanvas.width;
+                const height = this.rankCanvas.height;
+
+                ctx.clearRect(0, 0, width, height);
+                if (!this.sortedScores || this.sortedScores.length === 0) return;
+
+                // 使用对数刻度(Log scale)展现两极分化严重的长尾曲线
+                // 分数可能极低(如医疗事故多次)，因此以最小值为基准避免 log(0)
+                const maxLog = Math.log10(this.sortedScores[0]);
+                const minLog = Math.log10(this.sortedScores[this.numPoints - 1]);
+                const logRange = maxLog - minLog || 1;
+
+                const plotWidth = width - 20; // 右侧留空余量
+                const rectHeight = Math.max(0.5, height / this.numPoints); // 每位医生对应的条形高度
+
+                // 逐行绘制 10000 位医生的横条
+                for (let i = 0; i < this.numPoints; i++) {
+                    let y = (i / this.numPoints) * height;
+                    let score = this.sortedScores[i];
+                    
+                    // 将分数映射到对数宽度的 X 轴
+                    let w = ((Math.log10(score) - minLog) / logRange) * plotWidth;
+                    
+                    ctx.fillStyle = this.getColorForScore(score);
+                    ctx.fillRect(0, y, Math.max(1, w), rectHeight);
+                }
+
+                // 绘制参考线与文本标识 (Top 1, 100, 1000, 5000, 10000)
+                const marks = [0, 99, 999, 4999, 9999];
+                marks.forEach(rank => {
+                    let y = (rank / this.numPoints) * height;
+                    let score = this.sortedScores[rank];
+                    
+                    // 绘制微妙的参考线
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                    ctx.fillRect(0, y, width, 1);
+                    
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.font = '9px Inter, monospace';
+                    ctx.textAlign = 'right';
+                    
+                    // 根据位置微调文字基线以防出界
+                    if (rank === 0) ctx.textBaseline = 'top';
+                    else if (rank === 9999) ctx.textBaseline = 'bottom';
+                    else ctx.textBaseline = 'middle';
+                    
+                    ctx.fillText(`Top ${rank + 1} (${this.formatNumber(score)})`, width - 5, y);
+                });
             }
         }
 
